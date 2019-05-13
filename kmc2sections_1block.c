@@ -19,6 +19,7 @@ typedef struct {
 int my_itoa(int val, char* buf);
 double getRate(crystal_site *h, int i, int whichNbr, double K, int is_dH);
 void write2file(char *name, crystal_site *h, int dim);
+double KMC_section(int section_num, crystal_site *h, double t_stop, double R_loc, int is_dH, double K, int L_loc);
 
 int main(int argc, char *argv[]) {
 
@@ -83,117 +84,14 @@ int main(int argc, char *argv[]) {
 	printf("n=%f, t_stop = %f, 1/R_max = %f\n", n, t_stop, 1/R_max);
 	clock_t start, end;
 	double cpuTime;
-	//while(t < 1){
+	//while(t < 0.5){
 	while (t < Tfinal) {
 		//printf("R_loc = %f, current t = %f, t_stop = %f, Tfinal = %f\n", R_loc, t, t_stop, Tfinal);
 		if (t + t_stop > Tfinal)
 			break;
-		double t_1 = 0;
-		double t_2 = 0;
-		numEvents = 0;
-		while (t_1 < t_stop) {
-			//numEvents = 0;
-			timetonext = -log(uniform64()) / R_loc; //draw from Exp(R_local)
-		//	printf("timetonext = %lf\n", timetonext);
-			if (t_1 + timetonext > t_stop)
-				break;
-
-			//draw from distribution{ j w.p.r_j / R_loc, j = 0,...,L_loc - 1 }
-			eta = R_loc*uniform64();
-			z2 = 0;
-			i = -1;
-
-			while (z2<eta) {
-				i++;
-				z2 += 2 * h[i].Rrate;
-			}
-			whichNbr = 0;
-			if (uniform64() > 0.5)
-				whichNbr = 1;
-		//	printf("i = %d, L_loc = %d\n", i, L_loc);
-			if (i < L_loc / 2) {
-				numEvents++;
-				siteupdatelist[0] = i;
-				if (whichNbr == 1) {
-					siteupdatelist[1] = h[siteupdatelist[0]].Lnbr;
-					siteupdatelist[2] = h[siteupdatelist[1]].Lnbr;
-					siteupdatelist[3] = h[siteupdatelist[0]].Rnbr;
-				}
-				else {
-					siteupdatelist[1] = h[siteupdatelist[0]].Rnbr;
-					siteupdatelist[2] = h[siteupdatelist[0]].Lnbr;
-					siteupdatelist[3] = h[siteupdatelist[1]].Rnbr;
-				}
-
-				h[siteupdatelist[0]].height--;
-				h[siteupdatelist[1]].height++;
-
-				for (j = 0; j< 4; j++) {
-					i2 = siteupdatelist[j];
-					h[i2].Rrate = getRate(h, i2, 0, K, is_dH);
-					h[i2].Lrate = h[i2].Rrate;
-				}
-
-				R_loc = 0;
-				for (i = 0; i < L; i++)
-					R_loc += (h[i].Lrate + h[i].Rrate);
-			}
-
-			t_1 += timetonext;
-
-		}
-		//printf("num events in left block=%d, expected num = %f\n", numEvents, n/2);
+		R_loc = KMC_section(0, h, t_stop, R_loc, is_dH, K, L_loc);
 		//COMMUNICATE BETWEEN PROCESSORS
-		numEvents = 0;
-		while (t_2 < t_stop) {
-			timetonext = -log(uniform64()) / R_loc; //draw from Exp(R_local)
-			if (t_2 + timetonext > t_stop)
-				break;
-
-			//draw from distribution{ j w.p.r_j / R_loc, j = 0,...,L_loc - 1 }
-			eta = R_loc*uniform64();
-			z2 = 0;
-			i = -1;
-
-			while (z2<eta) {
-				i++;
-				z2 += 2 * h[i].Rrate;
-			}
-			whichNbr = 0;
-			if (uniform64() > 0.5)
-				whichNbr = 1;
-
-			if (i >= L_loc / 2) {
-				numEvents++;
-				siteupdatelist[0] = i;
-				if (whichNbr == 1) {
-					siteupdatelist[1] = h[siteupdatelist[0]].Lnbr;
-					siteupdatelist[2] = h[siteupdatelist[1]].Lnbr;
-					siteupdatelist[3] = h[siteupdatelist[0]].Rnbr;
-				}
-				else {
-					siteupdatelist[1] = h[siteupdatelist[0]].Rnbr;
-					siteupdatelist[2] = h[siteupdatelist[0]].Lnbr;
-					siteupdatelist[3] = h[siteupdatelist[1]].Rnbr;
-				}
-
-				h[siteupdatelist[0]].height--;
-				h[siteupdatelist[1]].height++;
-
-				for (j = 0; j< 4; j++) {
-					i2 = siteupdatelist[j];
-					h[i2].Rrate = getRate(h, i2, 0, K, is_dH);
-					h[i2].Lrate = h[i2].Rrate;
-				}
-
-				R_loc = 0;
-				for (i = 0; i < L; i++)
-					R_loc += (h[i].Lrate + h[i].Rrate);
-			}
-
-			t_2 += timetonext;
-		}
-		//printf("num events in right block: %d\n", numEvents);
+		R_loc = KMC_section(1, h, t_stop, R_loc, is_dH, K, L_loc);
 		t += t_stop;
 		//COMMUNICATE BETWEEN PROCESSORS 
 		//RECOMPUTE R_max AND t_stop
@@ -208,6 +106,72 @@ int main(int argc, char *argv[]) {
 
 	char str_hFinal[100] = "./hFinal.txt";
 	write2file(str_hFinal, h, L);
+}
+
+
+double KMC_section(int section_num, crystal_site *h, double t_stop, double R_loc, int is_dH, double K, int L_loc) {
+	double t = 0;
+	double timetonext, eta, z2;
+	int i, j, i2, whichNbr, siteupdatelist[4];
+	int numEvents = 0;
+	while (t < t_stop) {
+		//numEvents = 0;
+		timetonext = -log(uniform64()) / R_loc; //draw from Exp(R_local)
+		if (t + timetonext > t_stop)
+			break;
+
+		//draw from distribution{ j w.p.r_j / R_loc, j = 0,...,L_loc - 1 }
+		eta = R_loc*uniform64();
+		z2 = 0;
+		i = -1;
+
+		while (z2<eta) {
+			i++;
+			z2 += 2 * h[i].Rrate;
+		}
+		whichNbr = 0;
+		if (uniform64() > 0.5)
+			whichNbr = 1;
+		//	printf("i = %d, L_loc = %d\n", i, L_loc);
+		if ((int)(2*i/L_loc) == section_num) {
+			//printf("i=%d, 2*i/L_loc = %d, section_num = %d\n", i, 2*i/L_loc, section_num);
+			numEvents++;
+			siteupdatelist[0] = i;
+			if (whichNbr == 1) {
+				siteupdatelist[1] = h[siteupdatelist[0]].Lnbr;
+				siteupdatelist[2] = h[siteupdatelist[1]].Lnbr;
+				siteupdatelist[3] = h[siteupdatelist[0]].Rnbr;
+			}
+			else {
+				siteupdatelist[1] = h[siteupdatelist[0]].Rnbr;
+				siteupdatelist[2] = h[siteupdatelist[0]].Lnbr;
+				siteupdatelist[3] = h[siteupdatelist[1]].Rnbr;
+			}
+
+			h[siteupdatelist[0]].height--;
+			h[siteupdatelist[1]].height++;
+
+			for (j = 0; j< 4; j++) {
+				i2 = siteupdatelist[j];
+				R_loc -= h[i2].Rrate;
+				R_loc -= h[i2].Lrate;
+				h[i2].Rrate = getRate(h, i2, 0, K, is_dH);
+				h[i2].Lrate = h[i2].Rrate;
+				R_loc += h[i2].Rrate;
+				R_loc += h[i2].Lrate;
+			}
+
+			/*R_loc = 0;
+			for (i = 0; i < L; i++)
+				R_loc += (h[i].Lrate + h[i].Rrate);*/
+		}
+
+		t += timetonext;
+
+	}
+	//printf("num events in section %d = %d\n", section_num, numEvents);
+	return R_loc;
+
 }
 
 int my_itoa(int val, char* buf)
