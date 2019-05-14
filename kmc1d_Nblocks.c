@@ -22,8 +22,8 @@ typedef struct {
 int my_itoa(int val, char* buf);
 double getRate(crystal_site *h, int i, int whichNbr, double K, int is_dH);
 void write2file(char *name, crystal_site *h, int dim);
-double* local_KMC();
-double* initialize_lattice(int L, crystal_site *h);
+void local_KMC();
+crystal_site* initialize_lattice(int L, crystal_site *h);
 double drawExp(double rate);
 
 
@@ -62,16 +62,10 @@ int main(int argc, char * argv[]){
 	n = c*L; // avg number of events we want to occur in t_stop seconds
 	L_loc = L;
 
-	crystal_site *h;
-	h = (crystal_site *)malloc(L * sizeof(crystal_site));
-	h[0].Lnbr = L - 1;
-	h[0].Rnbr = 1;
-	h[L - 1].Lnbr = L - 2;
-	h[L - 1].Rnbr = 0;
-	for (i = 1; i<L - 1; i++) {
-		h[i].Lnbr = i - 1;
-		h[i].Rnbr = i + 1;
-	}
+
+	// Initialize the lattice.
+	crystal_site *h = initialize_lattice(L);
+
 
 
 	char str_hInit[100] = "./hInit.txt";
@@ -85,7 +79,7 @@ int main(int argc, char * argv[]){
 		R_loc += (h[i].Lrate + h[i].Rrate);
 	}
 
-	initialize_lattice(L, h);
+
 
 
 	R_max = R_loc; // this is the case when there's only one block
@@ -248,9 +242,21 @@ double* local_KMC(crystal_site* h, int L) {
 }
 
 /*
-Initialize the lattice of heights.
+Initialize the lattice.
 */
-void initialize_lattice(int L, crystal_site* h) {
+crystal_site* initialize_lattice(int L, int rank) {
+
+	h = (crystal_site *)malloc(L * sizeof(crystal_site));
+
+	h[0].Lnbr = L - 1;
+	h[0].Rnbr = 1;
+	h[L - 1].Lnbr = L - 2;
+	h[L - 1].Rnbr = 0;
+	for (i = 1; i<L - 1; i++) {
+		h[i].Lnbr = i - 1;
+		h[i].Rnbr = i + 1;
+	}
+
 	//initialize heights
 	for (i = 0; i < L; i++) {
 		double heightVal = L*sin(2 * PI*((double)i) / ((double)L));
@@ -258,6 +264,8 @@ void initialize_lattice(int L, crystal_site* h) {
 		if (uniform64() < heightVal - h[i].height)
 			h[i].height++;
 	}
+
+	return h;
 }
 
 
