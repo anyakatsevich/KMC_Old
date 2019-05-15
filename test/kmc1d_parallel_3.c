@@ -173,8 +173,9 @@ double KMC_section(int section_num, crystal_site *h, double t_stop, double R_loc
 		//draw from distribution{ j w.p.r_j / R_loc, j = 0,...,L_loc - 1 }
     // if (rank==0)
     // printf("about to draw site\n");
-
+		printf("R_loc before draw site %f\n", R_loc);
 		i = drawSite(h, R_loc);
+  	printf("%d\n", i);
 	 // if (rank==0)
     // printf("drew site\n");
 		whichNbr = 0;
@@ -182,7 +183,7 @@ double KMC_section(int section_num, crystal_site *h, double t_stop, double R_loc
 			whichNbr = 1;
 		//	printf("Section = %d,  chose i = %d\n", section_num, i);
 		if (((i < L_loc/2.0 && section_num==0) || (i >= L_loc/2.0 && section_num == 1))&& i != 0 && i != L_loc + 1) {
-
+					printf("processor %d: i = %d\n", rank, i);
 			numEvents++;
 			siteupdatelist[0] = i;
 
@@ -203,7 +204,7 @@ double KMC_section(int section_num, crystal_site *h, double t_stop, double R_loc
 
 			for (j = 0; j< 4; j++) {
 				i2 = siteupdatelist[j];
-
+				printf("processor %d: i2 = %d\n", rank, i2);
 				if (i2 > 0 && i2 < L_loc + 1) {
 				//	R_loc -= 2*h[i2].rate;
           increment -= 2*h[i2].rate;
@@ -248,6 +249,7 @@ int drawSite(crystal_site* h, double R_loc) {
 
 	while (z2<eta) {
 		i++;
+		if (i >= 3200) printf("inside draw site i = %d\n", i);
 		z2 += 2 * h[i].rate;
 	}
 
@@ -317,10 +319,11 @@ int main(int argc, char * argv[]) {
       printf("before section 0 in rank 0, R_loc = %f, R_max = %f\n", R_loc, R_max);
      // printf("starting section 0 in rank with largest R_loc\n");
 	 // R_loc = KMC_section(0, h, t_stop, R_loc, K, L_loc, rank);
+	 if (rank == 0)
       increment = KMC_section(0, h, t_stop, R_loc, K, L_loc, rank);
 
-	  if (rank==0)
-      printf("finished section 0 in rank 0, R_loc = %f, R_max = %f\n", R_loc, R_max);
+	//  if (rank==0)
+      printf("finished section 0 in rank %d, R_loc = %f, R_max = %f\n", rank, R_loc, R_max);
       //printf("finished section 0 in rank with largest R_loc\n");
 
    // R_loc -= 2*h[L_loc].rate;
