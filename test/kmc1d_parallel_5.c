@@ -56,7 +56,7 @@ void initialize_lattice(crystal_site* h, int L_loc, int rank, int L, double K, i
 
 	MPI_Recv(&(h[L_loc + 1].height), 1, MPI_INT, (rank + 1) % P, 0, comm, &status1); //receive to L_loc + 1 from the right
 	MPI_Recv(&(h[0].height), 1, MPI_INT, (rank - 1 + P) % P, 1, comm, &status1); //receive to 0 from the left
-																				 
+
 
 
 	for (int i = 1; i <= L_loc / 2; i++) {
@@ -90,7 +90,7 @@ double getRate(crystal_site *h, int i, double K) {
 
 
 void KMC_section(int section_num, crystal_site *h, double t_stop, double* R_locs, double K, int L_loc, int rank, int itr_num) {
-	
+
 	//printf("Rank %d: at beginning of KMC section %d: R_loc%d = %f (passed in)\n", rank, section_num, section_num, R_locs[section_num]);
 
 
@@ -105,13 +105,14 @@ void KMC_section(int section_num, crystal_site *h, double t_stop, double* R_locs
 			break;
 
 		//draw from distribution{ j w.p.r_j / R_loc, j = 0,...,L_loc - 1 }
-		
+
 		i = drawSite(h, R_locs[section_num], section_num, L_loc);
-	
+
+		if (i ==0 || i == L_loc + 1) printf("BAD!!\n");
 		whichNbr = 0;
 		if (uniform64() > 0.5)
 			whichNbr = 1;
-		
+
 			numEvents++;
 			siteupdatelist[0] = i;
 
@@ -130,7 +131,6 @@ void KMC_section(int section_num, crystal_site *h, double t_stop, double* R_locs
 			h[siteupdatelist[1]].height++;
 
 
-
 			for (j = 0; j< 4; j++) {
 				i2 = siteupdatelist[j];
 				///printf("processor %d: i2 = %d\n", rank, i2);
@@ -144,22 +144,19 @@ void KMC_section(int section_num, crystal_site *h, double t_stop, double* R_locs
           else{
                 R_locs[1] -= oldRate;
                 R_locs[1] += 2*h[i2].rate;
-          }      
-          
-          }         
+          }
+
+          }
 
        }
-
-
-		
-
 
 		t += timetonext;
 
 	}
 
+
   // printf("Rank %d: At end of KMC section %d: R_loc%d = %f\n\n", rank, section_num, section_num,R_locs[section_num]);
-	
+
 
 }
 
@@ -179,7 +176,7 @@ void rateMax(crystal_site* h, int rank, int L_loc) {
 }
 
 int drawSite(crystal_site* h, double R_loc, int section_num, int L_loc) {
-	
+
 
 	double eta = R_loc*uniform64();
 
@@ -211,11 +208,11 @@ int main(int argc, char * argv[]) {
 	// parse seed from command line
 	long long unsigned int sd;
 	sd = atoi(argv[1]);
-	init_genrand64(sd);
+	init_genrand64(sd + rank);
 	char seed[20];
 	my_itoa(sd, seed);
 
-	
+
 	int L, L_loc, numEvents;
 	double R_max0, R_max1, c, n, t_stop, K, Tfinal, cpuTime;
 	clock_t start, end;
@@ -226,7 +223,7 @@ int main(int argc, char * argv[]) {
 	fscanf(fid, "%d %lf %lf %lf", &L, &K, &Tfinal, &c);
 
 	fclose(fid);
-	
+
 
 	Tfinal *= pow(L, 4);
 	if (rank == 0)
@@ -251,17 +248,17 @@ int main(int argc, char * argv[]) {
 	int num_itr = 0;
 	while (t < Tfinal) {
 	//while (num_itr < 40) {
-  
+
 
 		MPI_Allreduce(&(R_locs[0]), &R_max0, 1, MPI_DOUBLE, MPI_MAX, MPI_COMM_WORLD);
 		MPI_Barrier(MPI_COMM_WORLD);
 		t_stop = n / R_max0;
 			if (t + t_stop > Tfinal)
 			  break;
-	
+
 
    KMC_section(0, h, t_stop, R_locs, K, L_loc, rank, num_itr);
-   
+
 
 		t += t_stop;
 
@@ -279,16 +276,25 @@ int main(int argc, char * argv[]) {
 		MPI_Recv(&(h[L_loc].height), 1, MPI_INT, (rank + 1) % P, 123, comm, &status1);
 		MPI_Recv(&(h[L_loc + 1].height), 1, MPI_INT, (rank + 1) % P, 124, comm, &status1);
 
-	
+
+/*
+			int sum = 0;
+			for (int i = 1; i < L_loc + 1; i++) {
+				sum += h[i].height;
+			}
+			printf("sum of heights = %d\n", sum);
+*/
+
+
 		h[L_loc].rate = getRate(h, L_loc, K);
 		h[L_loc - 1].rate = getRate(h, L_loc - 1, K);
- 
+
 
 
 		R_locs[1] += 2 * h[L_loc].rate;
 		R_locs[1] += 2 * h[L_loc - 1].rate;
 
- 
+
 		MPI_Allreduce(&(R_locs[1]), &R_max1, 1, MPI_DOUBLE, MPI_MAX, MPI_COMM_WORLD);
 		MPI_Barrier(MPI_COMM_WORLD);
 
@@ -305,7 +311,7 @@ int main(int argc, char * argv[]) {
 		R_locs[0] -= 2 * h[1].rate;
 		R_locs[0] -= 2 * h[2].rate;
 
-   
+
 
 		//MPI_Barrier(MPI_COMM_WORLD);
 		//COMMUNICATE BETWEEN PROCESSORS
@@ -316,17 +322,26 @@ int main(int argc, char * argv[]) {
 		MPI_Recv(&(h[0].height), 1, MPI_INT, (rank - 1 + P) % P, 123, comm, &status1);
 		MPI_Recv(&(h[1].height), 1, MPI_INT, (rank - 1 + P) % P, 124, comm, &status1);
 
+
+/*
+			sum = 0;
+			for (int i = 1; i < L_loc + 1; i++) {
+				sum += h[i].height;
+			}
+			printf("sum of heights = %d\n", sum);
+			*/
+
 		h[1].rate = getRate(h, 1, K);
 		h[2].rate = getRate(h, 2, K);
-   
+
 
 		R_locs[0] += 2 * h[1].rate;
 		R_locs[0] += 2 * h[2].rate;
 
-  
+
 		if (rank == 0)
 			printf("num_itr = %d, R_max1 = %f, new t = %f\n",  num_itr, R_max1, t);
-	
+
 
 		num_itr++;
 	}

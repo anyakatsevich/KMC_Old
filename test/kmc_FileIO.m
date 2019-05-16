@@ -1,6 +1,6 @@
-L_loc = 100;
-np = 4;
-L = L_loc*4;
+L_loc = 200;
+np = 2;
+L = L_loc*np;
 hInit = zeros(1, L);
 hFinal = zeros(1, L);
 
@@ -11,4 +11,13 @@ for i = 0:np-1
     hFinal((L_loc*i+1):(L_loc*i + L_loc)) = htemp;
 end
 
-figure; plot(hFinal); figure; plot(hFinal - hInit);
+figure(1); 
+plot(hFinal/400); 
+hold on; 
+plot(hInit/400); 
+legend('Final', 'Init');
+hold off;
+
+
+figure(2);
+plot(hInit - hFinal);
