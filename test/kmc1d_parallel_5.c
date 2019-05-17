@@ -26,7 +26,7 @@ int my_itoa(int val, char* buf);
 void myprint(long N, char* name, crystal_site* h);
 double getRate(crystal_site *h, int i, double K);
 void initialize_lattice(crystal_site* h, int L_loc, int rank, int L, double K, int P, double* R_locs, MPI_Comm comm);
-void KMC_section(int section_num, crystal_site *h, double t_stop, double* R_locs, double K, int L_loc, int rank, int itr_num);
+int KMC_section(int section_num, crystal_site *h, double t_stop, double* R_locs, double K, int L_loc, int rank, int itr_num);
 int drawSite(crystal_site* h, double R_loc, int section_num, int L_loc);
 void rateMax(crystal_site* h, int rank, int L_loc);
 
@@ -42,11 +42,20 @@ void initialize_lattice(crystal_site* h, int L_loc, int rank, int L, double K, i
 
 	//initialize heights
 	for (int i = 1; i < L_loc + 1; i++) {
-		double x = (double)L_loc * rank + i;
+		int j = L_loc * rank + i;
+		double x = ((double) j) / L;
+		//double heightVal = L*sin(2 * PI* x / ((double)L));
+		if (j > 0 && j < L/2) {
+			double heightVal = exp(8 - 1/x - 1/(0.5 - x));
+			h[i].height = (int) floor(0.1 * L * heightVal);
+		} else {
+			h[i].height = 0;
+		}
+/*
 		double heightVal = L*sin(2 * PI* x / ((double)L));
 		h[i].height = (int)floor(heightVal);
 		if (uniform64() < heightVal - h[i].height)
-			h[i].height++;
+			h[i].height++;*/
 	}
 
 
@@ -89,7 +98,7 @@ double getRate(crystal_site *h, int i, double K) {
 
 
 
-void KMC_section(int section_num, crystal_site *h, double t_stop, double* R_locs, double K, int L_loc, int rank, int itr_num) {
+int KMC_section(int section_num, crystal_site *h, double t_stop, double* R_locs, double K, int L_loc, int rank, int itr_num) {
 
 	//printf("Rank %d: at beginning of KMC section %d: R_loc%d = %f (passed in)\n", rank, section_num, section_num, R_locs[section_num]);
 
@@ -154,7 +163,7 @@ void KMC_section(int section_num, crystal_site *h, double t_stop, double* R_locs
 
 	}
 
-
+	return numEvents;
   // printf("Rank %d: At end of KMC section %d: R_loc%d = %f\n\n", rank, section_num, section_num,R_locs[section_num]);
 
 
@@ -246,6 +255,9 @@ int main(int argc, char * argv[]) {
 	start = clock();
 	double t = 0;  // Keep track of the time.
 	int num_itr = 0;
+
+	int total_events = 0;
+
 	while (t < Tfinal) {
 	//while (num_itr < 40) {
 
@@ -257,7 +269,7 @@ int main(int argc, char * argv[]) {
 			  break;
 
 
-   KMC_section(0, h, t_stop, R_locs, K, L_loc, rank, num_itr);
+   total_events += KMC_section(0, h, t_stop, R_locs, K, L_loc, rank, num_itr);
 
 
 		t += t_stop;
@@ -301,7 +313,7 @@ int main(int argc, char * argv[]) {
 		t_stop = n / R_max1;
 
 
-		KMC_section(1, h, t_stop, R_locs, K, L_loc, rank, num_itr);
+		total_events += KMC_section(1, h, t_stop, R_locs, K, L_loc, rank, num_itr);
 
 
 
@@ -339,7 +351,7 @@ int main(int argc, char * argv[]) {
 		R_locs[0] += 2 * h[2].rate;
 
 
-		if (rank == 0)
+		if (rank == 0 && num_itr%1000 == 0)
 			printf("num_itr = %d, R_max1 = %f, new t = %f\n",  num_itr, R_max1, t);
 
 
@@ -352,6 +364,14 @@ int main(int argc, char * argv[]) {
 		printf("\n");
 		printf("KMC CPU time: %g minutes\n", cpuTime / 60.0);
 	}
+
+	int all_processor_events;
+	MPI_Reduce(&total_events, &all_processor_events, 1, MPI_INT, MPI_SUM, 0, MPI_COMM_WORLD);
+	if (rank == 0) {
+		double avg = ((double) all_processor_events) / P;
+		printf("Average number of events per processor per time = %f\n", avg/Tfinal);
+	}
+
 
 
 	char str_hFinal[100];
