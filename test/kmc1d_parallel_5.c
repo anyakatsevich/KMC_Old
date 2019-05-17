@@ -44,18 +44,20 @@ void initialize_lattice(crystal_site* h, int L_loc, int rank, int L, double K, i
 	for (int i = 1; i < L_loc + 1; i++) {
 		int j = L_loc * rank + i;
 		double x = ((double) j) / L;
-		//double heightVal = L*sin(2 * PI* x / ((double)L));
+
+		/*
 		if (j > 0 && j < L/2) {
-			double heightVal = exp(8 - 1/x - 1/(0.5 - x));
+			//double heightVal = exp(8 - 1/x - 1/(0.5 - x));
 			h[i].height = (int) floor(0.1 * L * heightVal);
 		} else {
 			h[i].height = 0;
 		}
-/*
-		double heightVal = L*sin(2 * PI* x / ((double)L));
+		*/
+
+		double heightVal = L*sin(2 * PI* x);
 		h[i].height = (int)floor(heightVal);
 		if (uniform64() < heightVal - h[i].height)
-			h[i].height++;*/
+			h[i].height++;
 	}
 
 
